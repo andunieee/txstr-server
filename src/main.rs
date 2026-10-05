@@ -4,7 +4,7 @@ use clap::Parser;
 #[command(name = "server", about = "a whitelisted server")]
 struct Args {
     /// address to listen on
-    #[arg(long, default_value = "0.0.0.0:3334")]
+    #[arg(long, default_value = "0.0.0.0:22223")]
     listen: std::net::SocketAddr,
 
     /// directory where events and settings are stored
@@ -37,12 +37,12 @@ async fn main() {
         }
     };
     log::info!(
-        "server listening on {} (images {})",
+        "server listening on {}{}",
         args.listen,
         if args.no_images {
-            "disabled"
+            " (images disabled)"
         } else {
-            "enabled"
+            ""
         }
     );
 
