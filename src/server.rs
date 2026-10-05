@@ -261,18 +261,38 @@ impl ritualistic::server::CustomRelay for Server {
         match method {
             // whitelist
             Method::AllowPubKey(pubkey, reason) => {
+                // admins are implicitly whitelisted, don't persist a redundant entry
                 s.allowed_pubkeys.retain(|a| a.pubkey != *pubkey);
-                s.allowed_pubkeys.push(PubKeyReason {
-                    pubkey: *pubkey,
-                    reason: reason.clone(),
-                });
+                if !self.admins.contains(pubkey) {
+                    s.allowed_pubkeys.push(PubKeyReason {
+                        pubkey: *pubkey,
+                        reason: reason.clone(),
+                    });
+                }
                 self.recompute_writers();
             }
             Method::UnallowPubKey(pubkey, _) => {
                 s.allowed_pubkeys.retain(|a| a.pubkey != *pubkey);
                 self.recompute_writers();
             }
-            Method::ListAllowedPubKeys => return Ok(serde_json::json!(s.allowed_pubkeys)),
+            Method::ListAllowedPubKeys => {
+                let listed: Vec<PubKeyReason> = self
+                    .admins
+                    .iter()
+                    .copied()
+                    .map(|pubkey| PubKeyReason {
+                        pubkey,
+                        reason: None,
+                    })
+                    .chain(
+                        s.allowed_pubkeys
+                            .iter()
+                            .filter(|a| !self.admins.contains(&a.pubkey))
+                            .cloned(),
+                    )
+                    .collect();
+                return Ok(serde_json::json!(listed));
+            }
 
             // events
             Method::BanEvent(id, reason) => {

@@ -1,5 +1,6 @@
 use ritualistic::management::{Method, call};
 use ritualistic::{Event, EventTemplate, Filter, Kind, Relay, SecretKey, Tags, Timestamp};
+use txstr_server::{serve, server};
 
 struct Running {
     url: String,
@@ -21,7 +22,7 @@ async fn start(dir: &std::path::Path, admin: &SecretKey, no_images: bool) -> Run
         no_images,
     };
     let task = tokio::spawn(async move {
-        server::serve(options, listener).await.unwrap();
+        serve(options, listener).await.unwrap();
     });
     Running { url, task }
 }
@@ -86,7 +87,10 @@ async fn whitelist_and_follows() {
     let listed = manage(&s.url, &admin, Method::ListAllowedPubKeys).await;
     assert_eq!(
         listed,
-        serde_json::json!([{"pubkey": alice.pubkey().to_hex(), "reason": "friend"}])
+        serde_json::json!([
+            {"pubkey": admin.pubkey().to_hex()},
+            {"pubkey": alice.pubkey().to_hex(), "reason": "friend"},
+        ])
     );
 
     // alice follows bob, so bob can write, but carol (followed by bob) still can't

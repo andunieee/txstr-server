@@ -1,4 +1,5 @@
 use clap::Parser;
+use txstr_server::{serve, server};
 
 #[derive(Parser)]
 #[command(name = "server", about = "a whitelisted server")]
@@ -52,7 +53,7 @@ async fn main() {
         no_images: args.no_images,
     };
     tokio::select! {
-        result = server::serve(options, listener) => {
+        result = serve(options, listener) => {
             if let Err(err) = result {
                 log::error!("{}", err);
                 std::process::exit(1);
