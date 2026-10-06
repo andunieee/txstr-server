@@ -11,7 +11,7 @@ The server is very simple and efficient, it should have very low CPU/RAM use and
 Download a binary from [releases](https://github.com/andunieee/txstr-server/releases), or build with Cargo:
 
 ```sh
-cargo install --git https://github.com/andunieee/txstr-server
+cargo install txstr-server
 ```
 
 ## Run
