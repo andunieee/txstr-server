@@ -37,7 +37,7 @@ jobs:
       - name: package
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../txstr-server-${{ matrix.target }}.tar.gz server
+          tar czf ../../../txstr-server-${{ matrix.target }}.tar.gz txstr-server
           cd ../../../
           ls -la txstr-server-*.tar.gz
 
