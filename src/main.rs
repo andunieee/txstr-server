@@ -2,7 +2,7 @@ use clap::Parser;
 use txstr_server::{serve, server};
 
 #[derive(Parser)]
-#[command(name = "server", about = "a whitelisted server")]
+#[command(about = "personal (+ friends) self-hosted server companion to txstr")]
 struct Args {
     /// address to listen on
     #[arg(long, default_value = "0.0.0.0:22223")]

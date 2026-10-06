@@ -1,8 +1,8 @@
 //! the write policy, storage and management for the server
 
-use ritualistic::EventDatabase;
 use ritualistic::management::{IDReason, IPReason, Method, PubKeyReason};
 use ritualistic::relay_information::RelayInformationDocument;
+use ritualistic::EventDatabase;
 use ritualistic::{Event, Filter, Kind, PubKey};
 
 use crate::settings::Settings;
@@ -220,7 +220,7 @@ impl Server {
 
         for (contact, followers) in contacts {
             let reason = if followers.len() > 5 {
-                format!("contact of more than 5 members")
+                "contact of more than 5 members".to_string()
             } else {
                 let names: Vec<String> = followers.into_iter().map(|f| self.name(f)).collect();
                 format!("contact of {}", names.join(", "))

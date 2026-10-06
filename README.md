@@ -19,10 +19,10 @@ cargo install --git https://github.com/andunieee/txstr-server
 Declare your pubkey as admin (hex or `npub`, repeatable for multiple admins):
 
 ```sh
-server --admin <your-pubkey> --listen 127.0.0.1:22223 --data ./data
+txstr-server --admin <your-pubkey> --listen 127.0.0.1:22223 --data ./data
 ```
 
-Full options (`server --help`):
+Full options (`txstr-server --help`):
 
 ```text
 --listen <ADDR>  address to listen on [default: 0.0.0.0:22223]

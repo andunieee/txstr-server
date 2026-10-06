@@ -1,3 +1,9 @@
+//! personal (+ friends) self-hosted server companion to txstr
+//!
+//! see the crate [`README`](https://github.com/andunieee/txstr-server/blob/main/README.md)
+//! for how to run the server. most configuration is done through the
+//! management api from `txstr` itself.
+
 pub mod images;
 pub mod server;
 pub mod settings;

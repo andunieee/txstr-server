@@ -3,6 +3,13 @@ name = "txstr-server"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
+license = "MIT"
+authors = ["andunië", "andunie@cassis.cash"]
+description = "personal (+ friends) self-hosted server companion to txstr"
+repository = "https://github.com/andunieee/txstr-server"
+readme = "README.md"
+keywords = ["txstr", "twtxt", "social", "server", "nostr"]
+exclude = [".github/"]
 
 [dependencies]
 ritualistic = "0.2.1"
