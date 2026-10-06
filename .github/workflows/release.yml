@@ -22,8 +22,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -36,24 +34,15 @@ jobs:
       - name: build
         run: cargo build --locked --release --target ${{ matrix.target }}
 
-      - name: package (unix)
-        if: runner.os != 'Windows'
+      - name: package
         run: |
           cd target/${{ matrix.target }}/release
           tar czf ../../../txstr-server-${{ matrix.target }}.tar.gz server
           cd ../../../
           ls -la txstr-server-*.tar.gz
 
-      - name: package (windows)
-        if: runner.os == 'Windows'
-        run: |
-          cd target/${{ matrix.target }}/release
-          Compress-Archive -Path server.exe -DestinationPath ../../../txstr-server-${{ matrix.target }}.zip
-        shell: pwsh
-
       - name: publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           files: |
             txstr-server-*.tar.gz
-            txstr-server-*.zip
