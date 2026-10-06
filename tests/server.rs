@@ -88,8 +88,8 @@ async fn whitelist_and_follows() {
     assert_eq!(
         listed,
         serde_json::json!([
-            {"pubkey": admin.pubkey().to_hex()},
-            {"pubkey": alice.pubkey().to_hex(), "reason": "friend"},
+            {"pubkey": admin.pubkey().to_hex(), "reason": "admin"},
+            {"pubkey": alice.pubkey().to_hex(), "reason": "allowed directly: friend"},
         ])
     );
 
@@ -147,6 +147,72 @@ async fn whitelist_and_follows() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn contact_reasons() {
+    let dir = tempfile::tempdir().unwrap();
+    let admin = SecretKey::generate();
+    let s = start(dir.path(), &admin, false).await;
+
+    let members: Vec<SecretKey> = (0..6).map(|_| SecretKey::generate()).collect();
+    let bob = SecretKey::generate();
+    let carol = SecretKey::generate();
+    let dave = SecretKey::generate();
+    let follow = |pk: &SecretKey| vec!["p".to_string(), pk.pubkey().to_hex()];
+
+    for (i, m) in members.iter().enumerate() {
+        manage(&s.url, &admin, Method::AllowPubKey(m.pubkey(), None)).await;
+        publish(
+            &s.url,
+            event(m, 0, &format!(r#"{{"name":"m{i}"}}"#), vec![]),
+        )
+        .await
+        .unwrap();
+    }
+
+    // dave is a contact of the admin and all six members, bob of the admin and m0, carol of m1.
+    // m0 following m1 doesn't turn m1 into a contact, they stay listed as allowed directly
+    for m in std::iter::once(&admin).chain(members.iter()) {
+        let mut tags = vec![follow(&dave)];
+        if m.pubkey() == members[0].pubkey() {
+            tags.extend([follow(&bob), follow(&members[1])]);
+        } else if m.pubkey() == members[1].pubkey() {
+            tags.push(follow(&carol));
+        } else if m.pubkey() == admin.pubkey() {
+            tags.push(follow(&bob));
+        }
+        publish(&s.url, event(m, 3, "", tags)).await.unwrap();
+    }
+
+    // the admin has no kind 0, so their name falls back to the npub
+    let npub = admin.pubkey().to_npub();
+    let admin_name = format!("{}…{}", &npub[0..8], &npub[npub.len() - 7..]);
+    let mut expected =
+        vec![serde_json::json!({"pubkey": admin.pubkey().to_hex(), "reason": "admin"})];
+    for m in &members {
+        expected
+            .push(serde_json::json!({"pubkey": m.pubkey().to_hex(), "reason": "allowed directly"}));
+    }
+    let mut contacts = std::collections::HashMap::new();
+    contacts.insert(
+        bob.pubkey().to_hex(),
+        format!("contact of {admin_name}, m0"),
+    );
+    contacts.insert(carol.pubkey().to_hex(), "contact of m1".to_string());
+    contacts.insert(
+        dave.pubkey().to_hex(),
+        "contact of more than 5 members".to_string(),
+    );
+
+    let listed = manage(&s.url, &admin, Method::ListAllowedPubKeys).await;
+    let listed = listed.as_array().unwrap();
+    assert_eq!(listed[..7], expected[..]);
+    assert_eq!(listed.len(), 10);
+    for entry in &listed[7..] {
+        let pubkey = entry["pubkey"].as_str().unwrap();
+        assert_eq!(entry["reason"], contacts[pubkey], "{pubkey}");
+    }
 }
 
 #[tokio::test]

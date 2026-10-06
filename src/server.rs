@@ -10,6 +10,7 @@ use crate::settings::Settings;
 /// max events returned for a single filter
 const MAX_LIMIT: usize = 500;
 
+const KIND_METADATA: Kind = Kind(0);
 const KIND_FOLLOW_LIST: Kind = Kind(3);
 const KIND_DELETION: Kind = Kind(5);
 const KIND_NOTE: Kind = Kind(1);
@@ -110,32 +111,127 @@ impl Server {
             .chain(self.settings.allowed_pubkeys.iter().map(|a| a.pubkey))
     }
 
-    fn recompute_writers(&mut self) {
-        let whitelisted: Vec<PubKey> = self.whitelisted().collect();
-        let mut writers: std::collections::HashSet<PubKey> = whitelisted.iter().copied().collect();
-
+    /// the contacts in each of these authors' follow lists, from our own database only
+    fn follow_lists(&self, authors: Vec<PubKey>) -> Vec<(PubKey, Vec<PubKey>)> {
         let mut filter = [Filter {
             kinds: Some(vec![KIND_FOLLOW_LIST]),
-            authors: Some(whitelisted),
+            authors: Some(authors),
             ..Default::default()
         }];
         match self.db.query_events(&mut filter) {
-            Ok(results) => {
-                for follow_list in results {
-                    for tag in follow_list.tags.0.iter() {
-                        if tag.len() >= 2
-                            && tag[0] == "p"
-                            && let Ok(pubkey) = tag[1].parse::<PubKey>()
-                        {
-                            writers.insert(pubkey);
-                        }
-                    }
-                }
+            Ok(results) => results
+                .map(|follow_list| {
+                    let author = PubKey(follow_list.pubkey.0);
+                    let contacts = follow_list
+                        .tags
+                        .0
+                        .iter()
+                        .filter(|tag| tag.len() >= 2 && tag[0] == "p")
+                        .filter_map(|tag| tag[1].parse::<PubKey>().ok())
+                        .collect();
+                    (author, contacts)
+                })
+                .collect(),
+            Err(err) => {
+                log::error!("failed to load follow lists: {}", err);
+                Vec::new()
             }
-            Err(err) => log::error!("failed to load follow lists: {}", err),
+        }
+    }
+
+    /// a display name taken from the kind 0 in our own database, falling back to the npub
+    fn name(&self, pubkey: PubKey) -> String {
+        let mut filter = [Filter {
+            kinds: Some(vec![KIND_METADATA]),
+            authors: Some(vec![pubkey]),
+            limit: Some(1),
+            ..Default::default()
+        }];
+        let event = match self.db.query_events(&mut filter) {
+            Ok(mut results) => results.next().map(|event| {
+                rkyv::deserialize::<Event, rkyv::rancor::Error>(&*event)
+                    .expect("archived events always deserialize")
+            }),
+            Err(err) => {
+                log::error!("failed to load metadata for {}: {}", pubkey.to_hex(), err);
+                None
+            }
+        };
+        match event {
+            Some(event) => ritualistic::Profile::from_event(event).render_name(),
+            None => ritualistic::Profile::blank_from_pubkey(pubkey).render_name(),
+        }
+    }
+
+    fn recompute_writers(&mut self) {
+        let whitelisted: Vec<PubKey> = self.whitelisted().collect();
+        let mut writers: std::collections::HashSet<PubKey> = whitelisted.iter().copied().collect();
+        for (_, contacts) in self.follow_lists(whitelisted) {
+            writers.extend(contacts);
+        }
+        self.writers = writers;
+    }
+
+    /// admins, then directly allowed people, then the contacts of any of those
+    fn list_allowed(&self) -> Vec<PubKeyReason> {
+        let mut listed: Vec<PubKeyReason> = self
+            .admins
+            .iter()
+            .map(|pubkey| PubKeyReason {
+                pubkey: *pubkey,
+                reason: Some("admin".to_string()),
+            })
+            .collect();
+        for allowed in &self.settings.allowed_pubkeys {
+            if self.admins.contains(&allowed.pubkey) {
+                continue;
+            }
+            listed.push(PubKeyReason {
+                pubkey: allowed.pubkey,
+                reason: Some(match &allowed.reason {
+                    Some(note) if !note.is_empty() => format!("allowed directly: {}", note),
+                    _ => "allowed directly".to_string(),
+                }),
+            });
         }
 
-        self.writers = writers;
+        // contact -> the members who follow them, in order of first appearance
+        let members: Vec<PubKey> = self.whitelisted().collect();
+        let mut follow_lists = self.follow_lists(members.clone());
+        follow_lists.sort_by_key(|(member, _)| members.iter().position(|m| m == member));
+        let members: std::collections::HashSet<PubKey> = members.into_iter().collect();
+        let mut contacts: Vec<(PubKey, Vec<PubKey>)> = Vec::new();
+        let mut index: std::collections::HashMap<PubKey, usize> = Default::default();
+        for (member, follows) in follow_lists {
+            for contact in follows {
+                if members.contains(&contact) {
+                    continue;
+                }
+                let i = *index.entry(contact).or_insert_with(|| {
+                    contacts.push((contact, Vec::new()));
+                    contacts.len() - 1
+                });
+                let followers = &mut contacts[i].1;
+                if !followers.contains(&member) {
+                    followers.push(member);
+                }
+            }
+        }
+
+        for (contact, followers) in contacts {
+            let reason = if followers.len() > 5 {
+                format!("contact of more than 5 members")
+            } else {
+                let names: Vec<String> = followers.into_iter().map(|f| self.name(f)).collect();
+                format!("contact of {}", names.join(", "))
+            };
+            listed.push(PubKeyReason {
+                pubkey: contact,
+                reason: Some(reason),
+            });
+        }
+
+        listed
     }
 
     fn save_settings(&self) -> Result<(), String> {
@@ -275,24 +371,7 @@ impl ritualistic::server::CustomRelay for Server {
                 s.allowed_pubkeys.retain(|a| a.pubkey != *pubkey);
                 self.recompute_writers();
             }
-            Method::ListAllowedPubKeys => {
-                let listed: Vec<PubKeyReason> = self
-                    .admins
-                    .iter()
-                    .copied()
-                    .map(|pubkey| PubKeyReason {
-                        pubkey,
-                        reason: None,
-                    })
-                    .chain(
-                        s.allowed_pubkeys
-                            .iter()
-                            .filter(|a| !self.admins.contains(&a.pubkey))
-                            .cloned(),
-                    )
-                    .collect();
-                return Ok(serde_json::json!(listed));
-            }
+            Method::ListAllowedPubKeys => return Ok(serde_json::json!(self.list_allowed())),
 
             // events
             Method::BanEvent(id, reason) => {
